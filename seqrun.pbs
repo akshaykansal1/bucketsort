@@ -1,0 +1,8 @@
+#!/bin/sh
+#PBS -l nodes=1:node
+#PBS -m e
+
+cd /home/faculty/amit/cs430/lab/MPI/bsort
+
+./test1.sh > test1.results
+./test2.sh > test2.results
