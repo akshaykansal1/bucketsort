@@ -10,6 +10,8 @@
  *
  */
 
+#define VERBOSE 1
+
 const int DEBUG_LEVEL = DEBUG;
 int count_array_grows = 0;
 
@@ -18,6 +20,8 @@ int compareTo(const void *, const void *);
 const int TRUE = 1;
 const int FALSE = 0;
 
+static uint64_t min_range,max_range,box_share; 
+static int pid,nproc,n;
 int *A;
 int **bucket; // bucket[i] = array holding the ith bucket
 int *capacity; // capacity[i] = capacity of ith bucket
@@ -149,7 +153,7 @@ void combineBuckets(int *A, int n, int numBuckets){
  *
  */
 
-void sequentialBucketsort(int *A, int n, int numBuckets){
+void parallelBucketsort(int *A, int n, int numBuckets){
 	int share;
 	int i;
 	int bucketRange;
@@ -187,14 +191,27 @@ void print_usage(char * program){
 	fprintf(stderr, "Usage %s <n, must be > 1> <#buckets, must between 1 and n> <random seed>\n", program);
 }
 
-
+void gen_ranges(){
+	if(0 == pid){
+		min_range = 0;
+	}else{
+		min_range = pid*box_share;
+	}
+	if(pid == (nproc-1)){
+		max_range = n;
+	}else{
+		max_range = (pid+1)*box_share;
+	}
+#if VERBOSE == 1
+	printf("pid %d has range %"PRIu64"-%"PRIu64"\n",pid,min_range,max_range);
+#endif
+}
 
 int main(int argc, char **argv){
-	int n;
 	int numBuckets;
 	unsigned int seed;
-        int pid,nproc;
 	uint64_t start_time,total_time;
+	uint64_t *num_list;
         MPI_Status status;
 
 	if (argc != 4) {
@@ -211,11 +228,19 @@ int main(int argc, char **argv){
         MPI_Comm_rank(MPI_COMM_WORLD,&pid);
         start_time = MPI_Wtime();
 
-	uint64_t share = numBuckets/nproc;
+	box_share = n/nproc;
 	srandom(seed);
-	unrankRand(pid*share);
+	unrankRand(pid*box_share);
 	if(pid == (nproc - 1)){
-		share += numBuckets%nproc;
+		box_share += numBuckets%nproc;
+	}
+	num_list = malloc(sizeof(uint64_t)*box_share);
+	gen_ranges();
+	int x;
+	for(x=0;x<box_share;x++){
+		uint64_t temp = random();
+		
+		num_list[x] = temp;
 	}
 	if ((numBuckets < 1) || (n < 1) || (n < numBuckets)) {
 		print_usage(argv[0]);
@@ -229,7 +254,7 @@ int main(int argc, char **argv){
 		printArray(A,n);
 	}
 
-	sequentialBucketsort(A, n, numBuckets);
+	parallelBucketsort(A, n, numBuckets);
 	checkIfSorted(A, n);
 	if (DEBUG_LEVEL >= 1){
 		printf("Number of array grows is %d\n", count_array_grows);
