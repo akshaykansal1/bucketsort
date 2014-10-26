@@ -53,12 +53,17 @@ void checkIfSorted(uint64_t *array, uint64_t n){
 /*
  * Generate n numbers using the given seed
  */
-void generateInput(uint64_t *num_list, uint64_t n, uint64_t seed){
-	uint64_t i;
-
-	srandom(seed);
-	for (i=0; i<n; i++) {
-		num_list[i] = random();
+void generateInput(){
+	uint64_t i,k=0;
+	uint64_t pnum = box_share/nproc;
+	for (i=0; i<pnum; i++) {
+		num_list[i] = random()%max_range;
+		if(num_list[i]<min_range){
+			num_list[i] += min_range;
+		}
+#if VERBOSE == 1
+		printf("generated %"PRIu64" for range %"PRIu64"-%"PRIu64"\n",num_list[i],min_range,max_range);
+#endif
 	}
 }
 
@@ -222,34 +227,32 @@ int main(int argc, char **argv){
 	numBuckets = atoi(argv[2]);
 	seed = atoi(argv[3]);
 
-	MPI_Init(&argc,&argv);
-        MPI_Comm_size(MPI_COMM_WORLD,&nproc);
-        MPI_Comm_rank(MPI_COMM_WORLD,&pid);
-        start_time = MPI_Wtime();
-
-	box_share = n/nproc;
-	srandom(seed);
-	unrankRand(pid*box_share);
-	if(pid == (nproc - 1)){
-		box_share += numBuckets%nproc;
-	}
-	num_list = malloc(sizeof(uint64_t)*box_share);
-	gen_ranges();
-	uint64_t x;
-	for(x=0;x<box_share;x++){
-		uint64_t temp = random();
-			
-		num_list[x] = temp;
-	}
 	if ((numBuckets < 1) || (n < 1) || (n < numBuckets)) {
 		print_usage(argv[0]);
 		exit(1);
 	}
 			
-	num_list = (uint64_t *) malloc(sizeof(uint64_t) * n);
+	MPI_Init(&argc,&argv);
+        MPI_Comm_size(MPI_COMM_WORLD,&nproc);
+        MPI_Comm_rank(MPI_COMM_WORLD,&pid);
+        start_time = MPI_Wtime();
 
-	generateInput(num_list, n, seed);
- 	if (DEBUG_LEVEL >= 3){ 
+	srandom(seed);
+	unrankRand(pid*box_share);
+	
+	box_share = n/nproc;
+	if(pid == (nproc - 1)){
+		box_share += n%nproc;
+	}
+#if VERBOSE ==1
+	printf("pid %d has share %"PRIu64"\n",pid,box_share);
+#endif
+	num_list = malloc(sizeof(uint64_t)*box_share);
+	gen_ranges();
+	
+	generateInput();
+ 	
+	if (DEBUG_LEVEL >= 3){ 
 		printnum_listrray(num_list,n);
 	}
 
