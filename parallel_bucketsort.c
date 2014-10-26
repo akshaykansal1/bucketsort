@@ -18,7 +18,7 @@ uint64_t count_array_grows = 0;
 int compareTo(const void *, const void *);
 
 const uint64_t TRUE = 1;
-const uint64_t Fnum_listLSE = 0;
+const uint64_t FALSE = 0;
 
 static uint64_t min_range,max_range,box_share,n; 
 static int	pid,nproc;
@@ -34,7 +34,7 @@ void checkIfSorted(uint64_t *array, uint64_t n){
 	sorted = TRUE;
 	for (i=0; i<n-1; i++){
 		if (array[i] > array[i+1]) {
-				sorted = Fnum_listLSE;
+				sorted = FALSE;
 				break;
 		}
 	}
@@ -61,7 +61,7 @@ void generateInput(){
 		if(num_list[i]<min_range){
 			num_list[i] += min_range;
 		}
-#if VERBOSE == 1
+#if VERBOSE > 1
 		printf("generated %"PRIu64" for range %"PRIu64"-%"PRIu64"\n",num_list[i],min_range,max_range);
 #endif
 	}
@@ -71,7 +71,7 @@ void generateInput(){
 /*
  * Pruint64_t the array, one element per line
  */
-void printnum_listrray(uint64_t *num_list, uint64_t n){
+void print_array(uint64_t *num_list, uint64_t n){
 	uint64_t i;
 
 	for (i=0; i<n; i++){
@@ -253,7 +253,7 @@ int main(int argc, char **argv){
 	generateInput();
  	
 	if (DEBUG_LEVEL >= 3){ 
-		printnum_listrray(num_list,n);
+		print_array(num_list,n);
 	}
 
 	parallelBucketsort(num_list, n, numBuckets);
@@ -262,7 +262,7 @@ int main(int argc, char **argv){
 		printf("Number of array grows is %"PRIu64"\n", count_array_grows);
 	}
  	if (DEBUG_LEVEL >= 3) {
- 		printnum_listrray(num_list,n);
+ 		print_array(num_list,n);
 	}
 	total_time = start_time - MPI_Wtime();
 	printf("bucketsort: n = %"PRIu64"  m = %"PRIu64" buckets seed = %"PRIu64" time = %"PRIu64" seconds\n",
