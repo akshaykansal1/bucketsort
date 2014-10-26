@@ -90,11 +90,13 @@ void generateInput(){
 			to_send[i].num_list[k] = random();
 		}
 	}
-	/*need to send the data with 
-	MPI_Sendrecv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
-	    int dest, int sendtag, void *recvbuf, int recvcount,
-	        MPI_Datatype recvtype, int source, int recvtag,
-		    MPI_Comm comm, MPI_Status *status)*/
+	//need to send the data
+	for(i=0;i<(nproc-1);i++){ 
+		/*MPI_Sendrecv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
+			int dest, int sendtag, void *recvbuf, int recvcount,
+			MPI_Datatype recvtype, int source, int recvtag,
+			MPI_Comm comm, MPI_Status *status);*/
+	}
 	free(to_send);
 }
 
