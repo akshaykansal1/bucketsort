@@ -27,6 +27,11 @@ static uint64_t **bucket; // bucket[i] = array holding the ith bucket
 static uint64_t *capacity; // capacity[i] = capacity of ith bucket
 static uint64_t *size; // size[i] = next free location in ith bucket
 
+typedef struct send_list{
+	int pid;
+	uint64_t *num_list;
+}send_list;
+
 void checkIfSorted(uint64_t *array, uint64_t n){
 	uint64_t i;
 	uint64_t sorted;
@@ -65,6 +70,32 @@ void generateInput(){
 		printf("generated %"PRIu64" for range %"PRIu64"-%"PRIu64"\n",num_list[i],min_range,max_range);
 #endif
 	}
+	send_list *to_send = malloc(sizeof(send_list)*(nproc-1));
+	uint64_t tpnum = box_share + box_share%nproc;
+	to_send[0].num_list = malloc(sizeof(uint64_t)*pnum);
+	if(-1==(pid-1)){
+		to_send[0].pid = nproc-1;
+	}else{	
+		to_send[0].pid = (pid-1)%nproc;
+	}
+	for(i=0;i<tpnum;i++){
+		to_send[0].num_list[i] = random();
+	}
+	//uint64_t **to_send = malloc(sizeof(uint64_t*)*(nproc-1));
+	for(i=1;i<(nproc-1);i++){
+		to_send[i].num_list = malloc(sizeof(uint64_t)*pnum);
+		to_send[i].pid = (pid+i)%nproc;
+		printf("\t%d: pid to send to is %d\n",pid,to_send[i].pid);
+		for(k=0;k<pnum;k++){
+			to_send[i].num_list[k] = random();
+		}
+	}
+	/*need to send the data with 
+	MPI_Sendrecv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
+	    int dest, int sendtag, void *recvbuf, int recvcount,
+	        MPI_Datatype recvtype, int source, int recvtag,
+		    MPI_Comm comm, MPI_Status *status)*/
+	free(to_send);
 }
 
 
