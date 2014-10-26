@@ -187,7 +187,7 @@ void parallelBucketsort(uint64_t *num_list, uint64_t n, uint64_t numBuckets){
 }
 
 
-void pruint64_t_usage(char * program){
+void print_usage(char * program){
 	fprintf(stderr, "Usage %s <n, must be > 1> <#buckets, must between 1 and n> <random seed>\n", program);
 }
 
@@ -214,7 +214,7 @@ int main(int argc, char **argv){
         MPI_Status status;
 
 	if (argc != 4) {
-		pruint64_t_usage(argv[0]);
+		print_usage(argv[0]);
 		exit(1);
 	}
 
@@ -242,7 +242,7 @@ int main(int argc, char **argv){
 		num_list[x] = temp;
 	}
 	if ((numBuckets < 1) || (n < 1) || (n < numBuckets)) {
-		pruint64_t_usage(argv[0]);
+		print_usage(argv[0]);
 		exit(1);
 	}
 			
