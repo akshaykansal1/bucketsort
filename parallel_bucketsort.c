@@ -11,6 +11,7 @@
  */
 
 #define VERBOSE 1
+#define MPI_PB 1
 
 const uint64_t DEBUG_LEVEL = DEBUG;
 uint64_t count_array_grows = 0;
@@ -61,6 +62,7 @@ void checkIfSorted(uint64_t *array, uint64_t n){
 void generateInput(){
 	uint64_t i,k=0;
 	uint64_t pnum = box_share/nproc;
+        MPI_Status status;
 	for (i=0; i<pnum; i++) {
 		num_list[i] = random()%max_range;
 		if(num_list[i]<min_range){
@@ -72,7 +74,7 @@ void generateInput(){
 	}
 	send_list *to_send = malloc(sizeof(send_list)*(nproc-1));
 	uint64_t tpnum = box_share + box_share%nproc;
-	to_send[0].num_list = malloc(sizeof(uint64_t)*pnum);
+	to_send[0].num_list = malloc(sizeof(uint64_t)*tpnum);
 	if(-1==(pid-1)){
 		to_send[0].pid = nproc-1;
 	}else{	
@@ -91,11 +93,19 @@ void generateInput(){
 		}
 	}
 	//need to send the data
-	for(i=0;i<(nproc-1);i++){ 
-		/*MPI_Sendrecv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
-			int dest, int sendtag, void *recvbuf, int recvcount,
-			MPI_Datatype recvtype, int source, int recvtag,
-			MPI_Comm comm, MPI_Status *status);*/
+	uint64_t *temp_list=malloc(sizeof(uint64_t)*tpnum);
+	MPI_Sendrecv(to_send[0].num_list, tpnum, MPI_UINT64_T,
+		to_send[i].pid, MPI_PB, temp_list, tpnum,
+		MPI_UINT64_T, MPI_ANY_SOURCE, MPI_PB,
+		MPI_COMM_WORLD, &status);
+	for(i=1;i<(nproc-1);i++){ 
+		MPI_Sendrecv(to_send[i].num_list, pnum, MPI_UINT64_T,
+			to_send[i].pid, MPI_PB, temp_list, pnum,
+			MPI_UINT64_T, MPI_ANY_SOURCE, MPI_PB,
+			MPI_COMM_WORLD, &status);
+	}
+	for(i=0;i<nproc-1;i++){
+		free(to_send[i].num_list);
 	}
 	free(to_send);
 }
@@ -249,7 +259,6 @@ int main(int argc, char **argv){
 	uint64_t numBuckets;
 	uint64_t seed;
 	uint64_t start_time,total_time;
-        MPI_Status status;
 
 	if (argc != 4) {
 		print_usage(argv[0]);
