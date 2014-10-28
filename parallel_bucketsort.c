@@ -148,7 +148,6 @@ void generateInput(){
 		num_list[i] = temp_list[k];
 	}
 	//sendrecv the data for all other procs	
-	MPI_Barrier(MPI_COMM_WORLD);
 	index=1;	
 	for(i=1;i<(nproc-1);i++){ 
 		temp_list = NULL;
