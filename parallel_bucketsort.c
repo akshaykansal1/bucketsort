@@ -22,7 +22,7 @@ void print_array(uint64_t *, uint64_t);
 const uint64_t TRUE = 1;
 const uint64_t FALSE = 0;
 
-static uint64_t min_range,max_range,range_share,box_share,n; 
+static uint64_t min_range,max_range,range_share,box_share; 
 static int	pid,nproc;
 static uint64_t *num_list;
 static uint64_t **bucket; // bucket[i] = array holding the ith bucket
@@ -33,44 +33,96 @@ typedef struct send_list{
 	int pid;
 	uint64_t *num_list;
 }send_list;
+typedef struct min_max{
+	uint64_t min;
+	uint64_t max;
+}min_max;
 
-void checkIfSorted(uint64_t *array, uint64_t n){
+void checkIfSorted(uint64_t *array){
 	uint64_t i;
 	uint64_t sorted;
-
+	MPI_Status status;
+	printf("%d checking if sorted\n",pid);
+	MPI_Barrier(MPI_COMM_WORLD);
 	sorted = TRUE;
-	for (i=0; i<n-1; i++){
+	for (i=0; i<box_share-1; i++){
 		if (array[i] > array[i+1]) {
 				sorted = FALSE;
 				break;
 		}
 	}
-
-	if (sorted) {
-		if (DEBUG_LEVEL >= 1){
-			fprintf(stderr, "array is sorted\n");
+	if(0 == pid){
+		min_max *vals = malloc(sizeof(min_max)*(nproc));
+		for(i=1; i<(nproc);i++){
+			uint64_t tmin,tmax;
+			MPI_Recv(&tmin, 1, MPI_UINT64_T, MPI_ANY_SOURCE, MPI_PB, MPI_COMM_WORLD, &status);
+			MPI_Recv(&tmax, 1, MPI_UINT64_T, MPI_ANY_SOURCE, MPI_PB, MPI_COMM_WORLD, &status);
+			vals[status.MPI_SOURCE].min = tmin;
+			vals[status.MPI_SOURCE].max = tmax;
 		}
-	} else {
-			fprintf(stderr, "Error: array is not sorted!\n");
+		if(array[box_share-1] > vals[1].min){
+			sorted = FALSE;
+		}
+		for(i=1; i<(nproc-1);i++){
+			if(vals[i].max > vals[i+1].min){
+				sorted = FALSE;
+				break;
+			}
+		}
+		if (sorted) {
+			if (DEBUG_LEVEL >= 1){
+				fprintf(stderr, "array is sorted\n");
+			}
+		} else {
+				fprintf(stderr, "Error: array is not sorted!\n");
+		}
+	}else{
+		MPI_Send(&(array[0]), 1, MPI_UINT64_T, 0, MPI_PB, MPI_COMM_WORLD );
+		MPI_Send(&(array[box_share-1]), 1, MPI_UINT64_T, 0, MPI_PB, MPI_COMM_WORLD );
 	}
 }
 
+void send_nums(send_list *to_send,uint64_t pnum){
+	uint64_t index,i,k;
+        MPI_Status status;
 
+	//sendrecv the data for share+(share%nproc)
+	uint64_t *temp_list=malloc(sizeof(uint64_t)*pnum);
+	if(!temp_list){
+		printf("unable to allocate space for temp_list\n");
+		exit(1);
+	}
+	//sendrecv the data for all other procs	
+	index=box_share-1;	
+	for(i=0;i<(nproc-1);i++){ 
+		MPI_Sendrecv(to_send[i].num_list, pnum, MPI_UINT64_T,
+			to_send[i].pid, MPI_PB, temp_list, pnum,
+			MPI_UINT64_T, MPI_ANY_SOURCE, MPI_PB,
+			MPI_COMM_WORLD, &status);
+		//add to appropriate place in list
+		for(k=0;k<pnum;k++){
+			num_list[index--] = temp_list[k];
+		}
+	}
+#if VERBOSE > 1
+	print_array(num_list,box_share);
+#endif
+	//free temp structures
+	/*for(i=0;i<nproc-1;i++){
+		free(to_send[i].num_list);
+	}
+	free(temp_list);
+	free(to_send);*/
+}
 
 /*
  * Generate n numbers using the given seed
  */
 void generateInput(){
-	uint64_t i,k,j,index;
+	uint64_t i,k;
 	uint64_t pnum = box_share/nproc;
-	uint64_t tpnum,spnum; // temp vars for uneven distribution
+	uint64_t tpnum; // temp var for uneven distribution
 	tpnum = pnum + (box_share%nproc);
-	if(pid == (nproc-2)){
-		spnum = pnum + ((box_share +(n%nproc))%nproc);
-	}else{
-		spnum =tpnum;
-	}
-        MPI_Status status;
 	for (i=0; i<pnum; i++) {
 		num_list[i] = random()%max_range;
 		if(num_list[i]<min_range){
@@ -79,6 +131,14 @@ void generateInput(){
 #if VERBOSE > 1
 		printf("generated %"PRIu64" for range %"PRIu64"-%"PRIu64"\n",num_list[i],min_range,max_range);
 #endif
+	}
+	if(pid == (nproc-1)){
+		for (i=pnum; i<tpnum; i++) {
+			num_list[i] = random()%max_range;
+			if(num_list[i]<min_range){
+				num_list[i] += min_range;
+			}
+		}
 	}
 	send_list *to_send = malloc(sizeof(send_list)*(nproc-1));
 	if(!to_send){
@@ -96,21 +156,8 @@ void generateInput(){
 	}else{	
 		to_send[0].pid = (pid-1)%nproc;
 	}
-	printf("\t%d: pid to send to is %d\n",pid,to_send[0].pid);
-	//gen numbers for proc with share+(share%proc)
-	for(i=0;i<tpnum;i++){
-		uint64_t temp = random();
-		if(to_send[0].pid != (nproc-1)){
-			temp = temp%((to_send[0].pid+1)*range_share);
-		}
-		uint64_t temp_min = to_send[0].pid*range_share;
-		if(temp_min>temp){
-			temp+=temp_min;
-		}
-		to_send[0].num_list[i] = temp;
-	}
 	//gen numbers for all other procs
-	for(i=1;i<(nproc-1);i++){
+	for(i=0;i<(nproc-1);i++){
 		to_send[i].num_list = malloc(sizeof(uint64_t)*pnum);
 		if(!to_send[i].num_list){
 			printf("unable to allocate space for to_send.num_list\n");
@@ -130,49 +177,7 @@ void generateInput(){
 			to_send[i].num_list[k] = temp;
 		}
 	}
-	//sendrecv the data for share+(share%nproc)
-	uint64_t *temp_list=malloc(sizeof(uint64_t)*tpnum);
-	if(!temp_list){
-		printf("unable to allocate space for temp_list\n");
-		exit(1);
-	}
-#if VERBOSE == 1
-	printf("%d sending size %"PRIu64" to %d, expecting %"PRIu64"\n",pid,tpnum,to_send[0].pid,tpnum);
-#endif
-	MPI_Sendrecv(to_send[0].num_list, tpnum, MPI_UINT64_T,
-		to_send[0].pid, MPI_PB, temp_list, spnum,
-		MPI_UINT64_T, MPI_ANY_SOURCE, MPI_PB,
-		MPI_COMM_WORLD, &status);
-	//add to end of list
-	for(i=box_share-1,k=0;k<tpnum;i--,k++){
-		num_list[i] = temp_list[k];
-	}
-	//sendrecv the data for all other procs	
-	index=1;	
-	for(i=1;i<(nproc-1);i++){ 
-		temp_list = NULL;
-		temp_list=malloc(sizeof(uint64_t)*pnum);
-		if(!temp_list){
-			printf("unable to allocate space for temp_list\n");
-			exit(1);
-		}
-		MPI_Sendrecv(to_send[i].num_list, pnum, MPI_UINT64_T,
-			to_send[i].pid, MPI_PB, temp_list, pnum,
-			MPI_UINT64_T, MPI_ANY_SOURCE, MPI_PB,
-			MPI_COMM_WORLD, &status);
-		//add to appropriate place in list
-		for(j=0,k=index*pnum;j<pnum;k++,j++){
-			num_list[k] = temp_list[j];
-		}
-		index++;
-	}	
-	print_array(num_list,box_share);
-	//free temp structures
-	for(i=0;i<nproc-1;i++){
-		free(to_send[i].num_list);
-	}
-	free(temp_list);
-	free(to_send);
+	send_nums(to_send,pnum);
 }
 
 
@@ -205,8 +210,8 @@ void insertInBucket(uint64_t value, uint64_t bucketIndex){
 		capacity[bucketIndex] = 2 * capacity[bucketIndex];
 		count_array_grows++;
 		if (DEBUG_LEVEL >= 1) {
-			fprintf(stderr, "Growing bucket %"PRIu64" from %"PRIu64" to %"PRIu64" elements\n",
-					bucketIndex, capacity[bucketIndex]/2, capacity[bucketIndex]);
+			fprintf(stderr, "%d: Growing bucket %"PRIu64" from %"PRIu64" to %"PRIu64" elements\n",
+					pid,bucketIndex, capacity[bucketIndex]/2, capacity[bucketIndex]);
 		}
 	}
 
@@ -237,7 +242,7 @@ void sortEachBucket(uint64_t numBuckets){
 	}
 	if (DEBUG_LEVEL >= 2)
 		for (i=0; i<numBuckets; i++) {
-			fprintf(stderr, "bucket %"PRIu64" has %"PRIu64" elements\n", i, size[i]);
+			fprintf(stderr, "%d: bucket %"PRIu64" has %"PRIu64" elements\n",pid, i, size[i]);
 		}
 }
 
@@ -253,7 +258,7 @@ void combineBuckets(uint64_t *num_list, uint64_t n, uint64_t numBuckets){
 	for (i=0; i<numBuckets; i++) {
 		memcpy(num_list+start, bucket[i], sizeof(uint64_t)*size[i]);
 		start = start + size[i];
-		free(bucket[i]);
+		//free(bucket[i]);
 	}
 	free(bucket);
 }
@@ -272,7 +277,7 @@ void parallelBucketsort(uint64_t *num_list, uint64_t n, uint64_t numBuckets){
 	uint64_t bucketRange;
 	uint64_t bucketIndex;
 
-	share = box_share / numBuckets;
+	share = n / numBuckets;
 	share = share + (share * 11)/100; // 11% extra for overflow
 
 	capacity = (uint64_t *) malloc(sizeof(uint64_t)*numBuckets);
@@ -312,7 +317,7 @@ void gen_ranges(){
 	}else{
 		max_range = (pid+1)*range_share;
 	}
-#if VERBOSE == 1
+#if VERBOSE > 1
 	printf("pid %d has range %"PRIu64"-%"PRIu64"\n",pid,min_range,max_range);
 #endif
 }
@@ -320,6 +325,7 @@ void gen_ranges(){
 int main(int argc, char **argv){
 	uint64_t numBuckets;
 	uint64_t seed;
+	uint64_t n;
 	uint64_t start_time,total_time;
 
 	if (argc != 4) {
@@ -330,7 +336,7 @@ int main(int argc, char **argv){
 	n = atoi(argv[1]);
 	numBuckets = atoi(argv[2]);
 	seed = atoi(argv[3]);
-#if VERBOSE == 1
+#if VERBOSE > 1
 	printf("Running with %"PRIu64" numbers, %"PRIu64" buckets, and seed %"PRIu64"\n",n,numBuckets,seed);
 #endif
 	if ((numBuckets < 1) || (n < 1) || (n < numBuckets)) {
@@ -360,23 +366,23 @@ int main(int argc, char **argv){
 	
 	generateInput();
  	
-	/*if (DEBUG_LEVEL >= 3){ 
-		print_array(num_list,n);
+	if (DEBUG_LEVEL >= 3){ 
+		print_array(num_list,box_share);
 	}
 
-	parallelBucketsort(num_list, n, numBuckets);
-	checkIfSorted(num_list, n);
+	parallelBucketsort(num_list, box_share, numBuckets);
+	checkIfSorted(num_list);
 	if (DEBUG_LEVEL >= 1){
 		printf("Number of array grows is %"PRIu64"\n", count_array_grows);
 	}
  	if (DEBUG_LEVEL >= 3) {
- 		print_array(num_list,n);
+ 		print_array(num_list,box_share);
 	}
 	total_time = start_time - MPI_Wtime();
 	printf("bucketsort: n = %"PRIu64"  m = %"PRIu64" buckets seed = %"PRIu64" time = %"PRIu64" seconds\n",
-		   n, numBuckets, seed,	total_time);*/
+		   n, numBuckets, seed,	total_time);
 
-	//free(num_list);
+	free(num_list);
 
 	MPI_Finalize();
 	exit(0);
