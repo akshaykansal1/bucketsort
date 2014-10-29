@@ -77,8 +77,13 @@ void checkIfSorted(uint64_t *array){
 				fprintf(stderr, "Error: array is not sorted!\n");
 		}
 	}else{
-		MPI_Send(&(array[0]), 1, MPI_UINT64_T, 0, MPI_PB, MPI_COMM_WORLD );
-		MPI_Send(&(array[box_share-1]), 1, MPI_UINT64_T, 0, MPI_PB, MPI_COMM_WORLD );
+		if(sorted){
+			MPI_Send(&(array[0]), 1, MPI_UINT64_T, 0, MPI_PB, MPI_COMM_WORLD );
+			MPI_Send(&(array[box_share-1]), 1, MPI_UINT64_T, 0, MPI_PB, MPI_COMM_WORLD );
+		}else{
+			MPI_Send(0, 1, MPI_UINT64_T, 0, MPI_PB, MPI_COMM_WORLD );
+			MPI_Send(0, 1, MPI_UINT64_T, 0, MPI_PB, MPI_COMM_WORLD );
+		}
 	}
 }
 
@@ -373,15 +378,16 @@ int main(int argc, char **argv){
 	parallelBucketsort(num_list, box_share, numBuckets);
 	checkIfSorted(num_list);
 	if (DEBUG_LEVEL >= 1){
-		printf("Number of array grows is %"PRIu64"\n", count_array_grows);
+		printf("%d: Number of array grows is %"PRIu64"\n",pid, count_array_grows);
 	}
  	if (DEBUG_LEVEL >= 3) {
  		print_array(num_list,box_share);
 	}
-	total_time = start_time - MPI_Wtime();
-	printf("bucketsort: n = %"PRIu64"  m = %"PRIu64" buckets seed = %"PRIu64" time = %"PRIu64" seconds\n",
-		   n, numBuckets, seed,	total_time);
-
+	if(0==pid){
+		total_time = MPI_Wtime() - start_time;
+		printf("bucketsort: n = %"PRIu64"  m = %"PRIu64" buckets seed = %"PRIu64" time = %"PRIu64" seconds\n",
+			   n, numBuckets, seed,	total_time);
+	}
 	free(num_list);
 
 	MPI_Finalize();
